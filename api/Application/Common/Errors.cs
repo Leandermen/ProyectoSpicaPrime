@@ -57,6 +57,17 @@ public static class Errors
             new("Agreements.InvalidState", "El acuerdo no permite esta acción.",ErrorType.Validation);
     }
 
+    public static class AgreementTemplates
+    {
+        public static readonly Error NotFound =
+            new("AgreementTemplates.NotFound", "El contrato no existe.",ErrorType.NotFound);
+        public static readonly Error NullContent =
+            new("AgreementTemplates.NullContent", "El contenido del contrato no puede ser nulo.",ErrorType.Validation);
+        public static readonly Error InvalidState =
+            new("AgreementTemplates.InvalidState", "El contrato no permite esta acción.",ErrorType.Validation);
+    }
+
+
     public static class Works
     {
         public static readonly Error NotFound =

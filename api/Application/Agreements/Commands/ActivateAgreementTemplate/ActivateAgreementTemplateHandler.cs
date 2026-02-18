@@ -1,5 +1,6 @@
 using api.Application.Abstractions.Persistence;
 using api.Application.Abstractions.Persistence.Repositories;
+using api.Application.Common;
 using api.Domain.Agreements;
 using api.Domain.Users;
 
@@ -21,32 +22,31 @@ public sealed class ActivateAgreementTemplateHandler
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<ActivateAgreementTemplateResult> Handle(
+    public async Task<Result<ActivateAgreementTemplateResult>> Handle(
         Guid userId,
         ActivateAgreementTemplateCommand command,
         CancellationToken cancellationToken = default)
     {
         // 1️⃣ Usuario
-        var user = await _userRepository.GetByIdAsync(userId, cancellationToken)
-            ?? throw new InvalidOperationException("El usuario no existe.");
+        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (user is null)
+            return Result<ActivateAgreementTemplateResult>.Fail(Errors.Users.NotFound);
 
         if (!user.IsActive)
-            throw new InvalidOperationException("El usuario no está activo.");
+            return Result<ActivateAgreementTemplateResult>.Fail(Errors.Users.Inactive);
 
         if (!user.HasRole(UserRole.Professional) && !user.HasRole(UserRole.Admin))
-            throw new InvalidOperationException(
-                "El usuario no tiene permisos para activar contratos.");
+            return Result<ActivateAgreementTemplateResult>.Fail(Errors.Common.Forbidden);
 
         // 2️⃣ Template
         var template = await _agreementTemplateRepository.GetByIdAsync(
             command.AgreementTemplateId,
-            cancellationToken)
-            ?? throw new InvalidOperationException(
-                "El contrato no existe.");
+            cancellationToken);
+        if (template is null)
+            return Result<ActivateAgreementTemplateResult>.Fail(Errors.AgreementTemplates.NotFound);
 
         if (template.Status != AgreementTemplateStatus.Draft)
-            throw new InvalidOperationException(
-                "Solo se pueden activar contratos en estado Draft.");
+            return Result<ActivateAgreementTemplateResult>.Fail(Errors.AgreementTemplates.InvalidState);
 
         // 3️⃣ Archivar template activo existente (si hay)
         var activeTemplate =
@@ -72,9 +72,10 @@ public sealed class ActivateAgreementTemplateHandler
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         // 6️⃣ Resultado
-        return new ActivateAgreementTemplateResult(
-            template.Id,
-            template.Status
-        );
+        return Result<ActivateAgreementTemplateResult>.Ok(
+            new ActivateAgreementTemplateResult(
+                template.Id,
+                template.Status
+            ));
     }
 }

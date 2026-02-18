@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using api.Application.Abstractions.Persistence;
 using api.Application.Abstractions.Persistence.Repositories;
+using api.Application.Common;
 using api.Domain.Agreements;
 using api.Domain.Services;
 using api.Domain.Users;
@@ -29,35 +30,35 @@ namespace api.Application.Agreements.Commands.CreateAgreementTemplate
             _unitOfWork = unitOfWork;
         }
 
-        public async Task<CreateAgreementTemplateResult> Handle(
+        public async Task<Result<CreateAgreementTemplateResult>> Handle(
             Guid userId,
             CreateAgreementTemplateCommand command,
             CancellationToken cancellationToken = default)
         {
             // 1️⃣ Usuario
-            var user = await _userRepository.GetByIdAsync(userId, cancellationToken)
-                ?? throw new InvalidOperationException("El usuario no existe.");
+            var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
+            if (user is null)
+                return Result<CreateAgreementTemplateResult>.Fail(Errors.Users.NotFound);
 
             if (!user.IsActive)
-                throw new InvalidOperationException("El usuario no está activo.");
+                return Result<CreateAgreementTemplateResult>.Fail(Errors.Users.Inactive);
 
             if (!user.HasRole(UserRole.Professional) && !user.HasRole(UserRole.Admin))
-                throw new InvalidOperationException(
-                    "El usuario no tiene permisos para crear contratos.");
+                return Result<CreateAgreementTemplateResult>.Fail(Errors.Common.Forbidden);
 
             // 2️⃣ Servicio
             var service = await _serviceRepository.GetByIdAsync(
                 command.ServiceId,
-                cancellationToken)
-                ?? throw new InvalidOperationException("El servicio no existe.");
-
+                cancellationToken);
+            if (service is null)
+                return Result<CreateAgreementTemplateResult>.Fail(Errors.Services.NotFound);
+                
             if (!service.IsActive)
-                throw new InvalidOperationException("El servicio no está activo.");
+                return Result<CreateAgreementTemplateResult>.Fail(Errors.Services.NotAvailable);
 
             // 3️⃣ Validaciones de input
             if (string.IsNullOrWhiteSpace(command.Content))
-                throw new ArgumentException(
-                    "El contenido del contrato es obligatorio.");
+                return Result<CreateAgreementTemplateResult>.Fail(Errors.AgreementTemplates.NullContent);
 
             // 4️⃣ Versión (Application decide)
             var lastVersion =
@@ -82,11 +83,13 @@ namespace api.Application.Agreements.Commands.CreateAgreementTemplate
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             // 7️⃣ Resultado
-            return new CreateAgreementTemplateResult(
-                template.Id,
-                template.ServiceId,
-                template.Version,
-                template.Status
+            return Result<CreateAgreementTemplateResult>.Ok(
+                new CreateAgreementTemplateResult(
+                    template.Id,
+                    template.ServiceId,
+                    template.Version,
+                    template.Status
+                )
             );
         }
     }

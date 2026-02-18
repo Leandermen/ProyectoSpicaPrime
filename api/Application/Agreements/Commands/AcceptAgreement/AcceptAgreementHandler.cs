@@ -1,5 +1,6 @@
 using api.Application.Abstractions.Persistence;
 using api.Application.Abstractions.Persistence.Repositories;
+using api.Application.Common;
 using api.Domain.Agreements;
 using api.Domain.Users;
 
@@ -21,31 +22,32 @@ public sealed class AcceptAgreementHandler
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<AcceptAgreementResult> Handle(
+    public async Task<Result<AcceptAgreementResult>> Handle(
         Guid userId,
         AcceptAgreementCommand command,
         CancellationToken cancellationToken = default)
     {
         // 1️⃣ Usuario
-        var user = await _userRepository.GetByIdAsync(userId, cancellationToken)
-            ?? throw new InvalidOperationException("El usuario no existe.");
+        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (user is null)
+            return Result<AcceptAgreementResult>.Fail(Errors.Users.NotFound);
 
         if (!user.IsActive)
-            throw new InvalidOperationException("El usuario no está activo.");
+            return Result<AcceptAgreementResult>.Fail(Errors.Users.Inactive);
 
         if (!user.HasRole(UserRole.Client))
-            throw new InvalidOperationException("El usuario no puede aceptar contratos.");
+            return Result<AcceptAgreementResult>.Fail(Errors.Common.Forbidden);
 
         // 2️⃣ Agreement
         var agreement = await _agreementRepository.GetByIdAsync(
             command.AgreementId,
-            cancellationToken)
-            ?? throw new InvalidOperationException("El contrato no existe.");
+            cancellationToken);
+        if (agreement is null)
+            return Result<AcceptAgreementResult>.Fail(Errors.Agreements.NotFound);
 
         // 3️⃣ Autorización
         if (agreement.ClientId != user.Id)
-            throw new InvalidOperationException(
-                "El contrato no pertenece al usuario.");
+            return Result<AcceptAgreementResult>.Fail(Errors.Agreements.InvalidState);
 
         // 4️⃣ Dominio
         agreement.Accept();
@@ -54,10 +56,11 @@ public sealed class AcceptAgreementHandler
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         // 6️⃣ Resultado
-        return new AcceptAgreementResult(
+        return Result<AcceptAgreementResult>.Ok(
+            new AcceptAgreementResult(
             agreement.Id,
             agreement.Status,
             agreement.AcceptedAt!.Value
-        );
+        ));
     }
 }
